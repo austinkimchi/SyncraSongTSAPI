@@ -1,0 +1,10 @@
+# Scrap Files
+node_modules
+out/*
+package-lock.json
+
+# Environment Files
+env/*
+.env
+*.env
+env
