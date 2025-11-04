@@ -38,7 +38,8 @@ export const PROVIDERS: Record<Provider, ProviderConfig> = {
             'playlist-read-collaborative',
             'playlist-modify-public',
             'playlist-modify-private',
-            'ugc-image-upload'
+            'ugc-image-upload',
+            'user-library-read'
         ],
         usesPKCE: true
     },

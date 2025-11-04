@@ -8,11 +8,12 @@ import { createHash, randomBytes } from "crypto";
 /**
  * @route GET /oauth/link
  */
-API_router.get('/oauth/link', async (req, res, next) => {
+API_router.post('/oauth/link', async (req, res, next) => {
     try {
-        const { intent, provider } = req.body as {
+        const { intent, provider, redirectUri } = req.body as {
             provider: Provider;
             intent: Intent;
+            redirectUri?: string;
         };
         if (!provider || !intent) return res.status(400).json({ message: 'provider and intent are required.' });
 
@@ -31,14 +32,15 @@ API_router.get('/oauth/link', async (req, res, next) => {
             createdAt: new Date(),
             userId: null,
             codeVerifier: codeVerifier,
-            redirectUri: cfg.redirectUri
+            redirectUri: redirectUri || cfg.redirectUri
         });
+
         const authorizeUrl = buildAuthorizeUrl({
             provider,
             cfg,
             state: state_str,
             codeChallenge,
-            redirectUri: cfg.redirectUri || ""
+            redirectUri: redirectUri || cfg.redirectUri
         });
 
         return res.json({
