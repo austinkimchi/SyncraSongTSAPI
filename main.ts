@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import morgan from 'morgan';
 import jwt from 'jsonwebtoken';
 
 import { startDatabase } from './mongo.js';
@@ -7,6 +8,7 @@ import { startDatabase } from './mongo.js';
 const app = express();
 const port = process.env.PORT || 3000;
 
+app.use(morgan('dev'));
 app.use(cors());
 app.use(express.json());
 
