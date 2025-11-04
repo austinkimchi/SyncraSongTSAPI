@@ -20,16 +20,19 @@
   "homepage": "https://github.com/austinkimchi/SyncraSongTSAPI#readme",
   "dependencies": {
     "@types/express": "^5.0.5",
+    "@types/spotify-web-api-node": "^5.0.11",
     "axios": "^1.13.1",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.20.0",
-    "morgan": "^1.10.1"
+    "morgan": "^1.10.1",
+    "spotify-web-api-node": "^5.0.2"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/jsonwebtoken": "^9.0.10",
+    "@types/morgan": "^1.9.10",
     "@types/node": "^24.10.0",
     "eslint": "^9.39.0",
     "ts-node": "^10.9.2",
