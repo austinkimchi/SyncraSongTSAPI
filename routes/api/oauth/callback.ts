@@ -14,6 +14,7 @@ API_router.all("/oauth/callback/:provider", async (req, res, next) => {
         const tokenFromBody = req.body?.token as string | undefined; // e.g., Apple Music user token
         if (!provider) return res.status(400).json({ message: "provider required" });
 
+        // MusicKit (Apple Music) connection (not login)
         if (provider == "apple_music" && !state) {
             if (!tokenFromBody) return res.status(400).json({ message: "Missing Music User Token" });
             const userId = getUserId(req);
@@ -79,7 +80,27 @@ API_router.all("/oauth/callback/:provider", async (req, res, next) => {
             // Validate token by fetching user profile
             const me = await spotifyMe(providerAccessToken);
             if (!me?.id) return res.status(401).json({ message: "spotify token invalid" });
+
             providerUserId = me.id;
+        } else if (provider === "soundcloud") {
+            if (!code) return res.status(400).json({ message: "Missing authorization code" });
+            if (!cfg.clientId || !cfg.redirectUri)
+                return res.status(500).json({ message: "Server missing fields for SoundCloud" });
+
+            // Exchange code for access token
+            const tok = await exchangeSoundCloudCode({
+                code,
+                codeVerifier: s.codeVerifier || "",
+                clientId: cfg.clientId!,
+                clientSecret: process.env.SOUNDCLOUD_CLIENT_SECRET!,
+                redirectUri: s.redirectUri!,
+            });
+            providerAccessToken = tok.access_token;
+
+            const me = await soundcloudMe(providerAccessToken);
+            if (!me?.id) return res.status(401).json({ message: "soundcloud token invalid" });
+
+            providerUserId = me.id.toString();
         }
 
         // Intent: login, connect
@@ -195,6 +216,57 @@ async function exchangeSpotifyCode(args: {
         scope?: string;
     };
 }
+
+async function exchangeSoundCloudCode(args: {
+    code: string;
+    codeVerifier: string;
+    clientId: string;
+    clientSecret: string;
+    redirectUri: string;
+}) {
+    const body = new URLSearchParams({
+        client_id: args.clientId,
+        client_secret: args.clientSecret,
+        redirect_uri: args.redirectUri,
+        grant_type: "authorization_code",
+        code: args.code,
+        code_verifier: args.codeVerifier,
+    });
+
+    const r = await fetch("https://secure.soundcloud.com/oauth/token", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Authorization": `Basic ${Buffer.from(`${args.clientId}:${args.clientSecret}`).toString('base64')}`
+        },
+        body,
+    });
+    if (!r.ok) {
+        const txt = await r.text().catch(() => "");
+        throw new Error(`soundcloud token exchange failed: ${r.status} ${txt}`);
+    }
+
+    return (await r.json()) as {
+        access_token: string;
+        expires_in: number;
+        refresh_token?: string;
+        scope?: string;
+        token_type: string;
+    };
+}
+
+async function soundcloudMe(accessToken: string) {
+    const r = await fetch("https://api.soundcloud.com/me", {
+        headers: {
+            "accept": 'application/json; charset=utf-8',
+            "Authorization": `OAuth ${accessToken}`
+        },
+    });
+    if (!r.ok) return null;
+
+    return (await r.json()) as { id: number; username?: string; email?: string };
+}
+
 async function spotifyMe(accessToken: string) {
     const r = await fetch("https://api.spotify.com/v1/me", {
         headers: { Authorization: `Bearer ${accessToken}` },

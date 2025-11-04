@@ -93,6 +93,17 @@ function buildAuthorizeUrl(opts: {
                 url.searchParams.append('code_challenge', codeChallenge);
             }
             break;
+        case 'soundcloud':
+            url.searchParams.append('client_id', cfg.clientId!);
+            url.searchParams.append('redirect_uri', redirectUri || cfg.redirectUri!);
+            url.searchParams.append('response_type', 'code');
+            url.searchParams.append('scope', (cfg.scopes || []).join(' '));
+            url.searchParams.append('state', state);
+            if (cfg.usesPKCE && codeChallenge) {
+                url.searchParams.append('code_challenge_method', 'S256');
+                url.searchParams.append('code_challenge', codeChallenge);
+            }
+            break;
         default:
             return null;
     }

@@ -5,6 +5,11 @@ if (!process.env.SPOTIFY_CLIENT_ID ||
     !process.env.APPLE_MUSICKIT_CLIENTID)
     throw new Error('One or more OAuth environment variables are not set.');
 
+if (!process.env.SOUNDCLOUD_CLIENT_ID ||
+    !process.env.SOUNDCLOUD_REDIRECT_URI)
+    throw new Error('One or more OAuth environment variables are not set.');
+
+
 export type Intent = 'login' | 'connect';
 export interface StateDoc {
     state: string;                      // random state string
@@ -47,13 +52,13 @@ export const PROVIDERS: Record<Provider, ProviderConfig> = {
         clientId: process.env.APPLE_MUSICKIT_CLIENTID,
         redirectUri: "",
     },
-    // soundcloud: {
-    //     authUrl: 'https://soundcloud.com/connect',
-    //     clientId: process.env.SOUNDCLOUD_CLIENT_ID,
-    //     redirectUri: process.env.SOUNDCLOUD_REDIRECT_URI,
-    //     scopes: [
-    //         'non-expiring'
-    //     ],
-    //     usesPKCE: false
-    // }
+    soundcloud: {
+        authUrl: 'https://secure.soundcloud.com/authorize',
+        clientId: process.env.SOUNDCLOUD_CLIENT_ID,
+        redirectUri: process.env.SOUNDCLOUD_REDIRECT_URI,
+        scopes: [
+            'non-expiring'
+        ],
+        usesPKCE: true
+    }
 }

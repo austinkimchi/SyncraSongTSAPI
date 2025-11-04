@@ -1,1 +1,1 @@
-export type Provider = 'spotify' | 'apple_music';
+export type Provider = 'spotify' | 'apple_music' | 'soundcloud';
