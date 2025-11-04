@@ -31,7 +31,7 @@ API_router.get('/apple_music/fetchPlaylist', async (req, res) => {
         // store playlists in DB
         await db.collection('apple_music').updateOne(
             { _id: userId },
-            { $set: { playlists } },
+            { $set: { playlists, updatedAt: new Date() } },
             { upsert: true }
         );
 
