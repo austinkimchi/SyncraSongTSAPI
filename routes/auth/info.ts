@@ -6,7 +6,7 @@ import { AUTH_router, db, jwt, JWT_SECRET } from "./auth.js";
  * @route GET /auth/info
  * @access Private
  * @header {string} Authorization - Bearer token containing the JWT.
- * @returns {object} - User information or error message.
+ * @returns {object} - User information and JWT information or error message.
  */
 AUTH_router.get('/info', async (req, res, next) => {
     try {
@@ -27,7 +27,18 @@ AUTH_router.get('/info', async (req, res, next) => {
         );
         if (!user) return res.status(404).json({ message: 'User not found' });
 
-        res.status(200).json({ _id: user._id, oauth: user.oauth || [] });
+        // get expiration time from token
+        const jwtPayload = jwt.decode(token) as { [key: string]: any } | null;
+        if (!jwtPayload || typeof jwtPayload !== 'object' || !('exp' in jwtPayload))
+            return res.status(400).json({ message: 'Malformed JWT payload' });
+        const exp = jwtPayload.exp as number;
+        const now = Math.floor(Date.now() / 1000);
+        const jwtInfo = {
+            expiresAt: exp,
+            expiresIn: exp - now,
+        };
+
+        res.status(200).json({ userId: user._id, oauth: user.oauth || [], jwt: jwtInfo });
     } catch (err) {
         console.error(err);
         if (err instanceof jwt.JsonWebTokenError)

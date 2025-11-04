@@ -1,4 +1,4 @@
-export type Provider = 'spotify' | 'apple_music' | 'soundcloud';
+import type { Provider } from "./general.js";
 
 export interface OAuthEntry {
     provider: Provider;
@@ -7,6 +7,6 @@ export interface OAuthEntry {
 }
 export interface UserDoc {
     _id: string;            // username    
-    password: string;       // password
+    password?: string;      // password
     oauth?: OAuthEntry[];   // array of oauth entries
 }
