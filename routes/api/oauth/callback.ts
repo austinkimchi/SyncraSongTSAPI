@@ -1,4 +1,4 @@
-import { API_router, db, jwt } from "../api.js";
+import { API_router, db, getUserId, jwt } from "../api.js";
 import type { Provider } from "../../../types/general.js";
 import type { ProviderConfig, StateDoc } from "../../../types/oauth.js";
 import { PROVIDERS } from "../../../types/oauth.js";
@@ -12,9 +12,40 @@ API_router.all("/oauth/callback/:provider", async (req, res, next) => {
         const state = (req.query.state || req.body.state) as string | undefined;
         const code = (req.query.code || req.body.code) as string | undefined;
         const tokenFromBody = req.body?.token as string | undefined; // e.g., Apple Music user token
+        if (!provider) return res.status(400).json({ message: "provider required" });
 
-        if (!provider || !state)
-            return res.status(400).json({ message: "provider and state are required" });
+        if (provider == "apple_music" && !state) {
+            if (!tokenFromBody) return res.status(400).json({ message: "Missing Music User Token" });
+            const userId = getUserId(req);
+            if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+            // check if already linked
+            const userDoc = await db.collection<UserDoc>("users").findOne({ _id: userId });
+            if (userDoc?.oauth?.some(o => o.provider === "apple_music")) {
+                await db.collection<UserDoc>("users").updateOne(
+                    { _id: userId },
+                    { $pull: { oauth: { provider: "apple_music" } } }
+                );
+            }
+
+            // Apple Music does not provide a user ID in this flow
+            await db.collection<UserDoc>("users").updateOne(
+                { _id: userId },
+                {
+                    $push: {
+                        oauth: {
+                            provider: "apple_music",
+                            providerId: "", // No user ID available from Apple Music
+                            accessToken: decodeURI(tokenFromBody),
+                        },
+                    }
+                }
+            );
+
+            return res.json({ info: "connected", providerLinked: provider });
+        }
+
+        if (!state) return res.status(400).json({ message: "state required" });
 
 
         const cfg: ProviderConfig | undefined = PROVIDERS[provider];
@@ -49,13 +80,6 @@ API_router.all("/oauth/callback/:provider", async (req, res, next) => {
             const me = await spotifyMe(providerAccessToken);
             if (!me?.id) return res.status(401).json({ message: "spotify token invalid" });
             providerUserId = me.id;
-        }
-
-        if (provider === "apple_music") {
-            if (!tokenFromBody)
-                return res.status(400).json({ message: "Missing Music User Token" });
-            providerAccessToken = tokenFromBody;
-            providerUserId = "apple-music";
         }
 
         // Intent: login, connect
