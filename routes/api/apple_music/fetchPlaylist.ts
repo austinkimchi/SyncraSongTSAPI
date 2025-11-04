@@ -12,11 +12,11 @@ API_router.get('/apple_music/fetchPlaylist', async (req, res) => {
         const userId = getUserId(req);
         if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
-        const userDoc = await db.collection('users').findOne({ _id: userId as any }) as UserDoc | null;
+        const userDoc = await db.collection('users').findOne({ _id: userId }) as UserDoc | null;
         if (!userDoc || !userDoc.oauth) return res.status(401).json({ error: 'User not setup' });
 
         if (!fetch) {
-            const appleData = await db.collection('apple_music').findOne({ _id: userId as any });
+            const appleData = await db.collection('apple_music').findOne({ _id: userId });
             if (appleData && appleData.playlists)
                 return res.status(202).json({ playlists: appleData.playlists });
         }
@@ -30,7 +30,7 @@ API_router.get('/apple_music/fetchPlaylist', async (req, res) => {
 
         // store playlists in DB
         await db.collection('apple_music').updateOne(
-            { _id: userId as any },
+            { _id: userId },
             { $set: { playlists } },
             { upsert: true }
         );

@@ -3,7 +3,7 @@
  * @desc Updates the user's Spotify playlist data
  * @access Private (authenticated users JWT required)
  */
-import { API_router, db } from '../api.js';
+import { API_router, db, getUserId } from '../api.js';
 import { spotifyApi } from './spotify.js';
 import type { UserDoc } from '../../../types/database.js';
 import type { Playlist } from '../../auth/playlist.js';
@@ -13,12 +13,7 @@ API_router.get('/spotify/fetchPlaylist', async (req, res) => {
     try {
         // fetch query param fetch bool
         const fetch = req.query.fetch === 'true';
-        const authHeader = req.headers;
-
-        if (!authHeader) return res.status(401).json({ error: 'Unauthorized' });
-        const token = authHeader.authorization?.split(' ')[1] as string;
-        const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any; // TODO strict type
-        const userId = decoded.userId;
+        const userId = getUserId(req);
 
         if (!userId) return res.status(401).json({ error: 'Unauthorized' });
         const userDoc = await db.collection('users').findOne({ _id: userId }) as UserDoc | null;
