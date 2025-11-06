@@ -17,7 +17,7 @@ API_router.get('/apple_music/fetchPlaylist', async (req, res) => {
         if (!fetch) {
             const appleData = await db.collection('apple_music').findOne({ _id: userId });
             if (appleData && appleData.playlists)
-                return res.status(202).json({ playlists: appleData.playlists });
+                return res.status(202).json({ playlists: appleData.playlists, updatedAt: appleData.updatedAt });
         }
 
         // get the oauth of provider: apple_music only
@@ -26,15 +26,16 @@ API_router.get('/apple_music/fetchPlaylist', async (req, res) => {
 
         const musicUserToken = appleOauth.accessToken;
         const playlists = await parsedApplePlaylist(musicUserToken);
+        const now = new Date();
 
         // store playlists in DB
         await db.collection('apple_music').updateOne(
             { _id: userId },
-            { $set: { playlists, updatedAt: new Date() } },
+            { $set: { playlists, updatedAt: now } },
             { upsert: true }
         );
 
-        return res.status(200).json({ playlists });
+        return res.status(200).json({ playlists, updatedAt: now });
     } catch (err) {
         console.error('Error in /apple_music/fetchPlaylist:', err);
         return res.status(500).json({ error: 'Internal server error' });

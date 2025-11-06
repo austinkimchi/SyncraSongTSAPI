@@ -22,7 +22,7 @@ API_router.get('/spotify/fetchPlaylist', async (req, res) => {
         if (!fetch) {
             const spotifyData = await db.collection('spotify').findOne({ _id: userId });
             if (spotifyData && spotifyData.playlists)
-                return res.status(202).json({ playlists: spotifyData.playlists });
+                return res.status(202).json({ playlists: spotifyData.playlists, updatedAt: spotifyData.updatedAt });
         }
 
         // get the oauth of provider: spotify only
@@ -56,15 +56,15 @@ API_router.get('/spotify/fetchPlaylist', async (req, res) => {
             ownerName: pl.owner.display_name || '',
             public: pl.public || false
         }));
-
+        const now = new Date();
         // push to database
         await db.collection('spotify').updateOne(
             { _id: userId },
-            { $set: { playlists: playlists, updatedAt: new Date() } },
+            { $set: { playlists: playlists, updatedAt: now } },
             { upsert: true }
         );
 
-        return res.json({ playlists: playlists });
+        return res.json({ playlists: playlists, updatedAt: now });
     } catch (error) {
         console.error('/spotify/fetchPlaylist: ', error);
         res.status(500).json({ error: 'Internal server error' });
