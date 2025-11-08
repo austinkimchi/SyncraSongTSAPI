@@ -12,10 +12,10 @@ AUTH_router.get('/info', async (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
         if (!authHeader)
-            return res.status(401).json({ message: 'Authorization header missing' });
+            return res.status(400).json({ message: 'Authorization header missing' });
         const token = authHeader.split(' ')[1];
         if (!token)
-            return res.status(401).json({ message: 'Token missing from Authorization header' });
+            return res.status(400).json({ message: 'Token missing from Authorization header' });
 
         const decoded = jwt.verify(token, JWT_SECRET);
         if (!decoded || typeof decoded !== 'object' || !('userId' in decoded))

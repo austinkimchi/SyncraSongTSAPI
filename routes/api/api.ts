@@ -37,6 +37,7 @@ export default API_router;
     loadRoutesFromDirectory('oauth');
     loadRoutesFromDirectory('spotify');
     loadRoutesFromDirectory('apple_music');
+    import('./transfer.js');
 })();
 
 function loadRoutesFromDirectory(directory: string) {
