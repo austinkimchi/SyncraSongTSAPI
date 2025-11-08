@@ -1,14 +1,14 @@
 import { API_router, getUserId } from './api.js';
 import { getAgenda } from '../../agenda/index.js';
 import { JobNames } from '../../agenda/jobNames.js';
-import type { TransferPlaylistData } from '../../types/jobs.js';
+import { db } from './api.js';
 import { createTransferDoc, getTransferDoc } from '../../agenda/transferJobs.js';
+import { ObjectId } from 'mongodb';
 
 /**
  * Initiate a playlist transfer
  */
 API_router.post('/transfer', async (req, res) => {
-    // TODO: validate req.body
     const userId = getUserId(req);
     if (!userId) return res.status(401).json({ error: 'unauthorized' });
 
@@ -35,9 +35,14 @@ API_router.post('/transfer', async (req, res) => {
     }
 
     const agenda = await getAgenda();
-    for (const id of ids)
-        await agenda.now(JobNames.TransferPlaylist, { jobId: id, ...req.body });
 
+    for (const id of ids) {
+        const job = await agenda.now(JobNames.TransferPlaylist, { jobId: id });
+        await db.collection('transferJobs').updateOne(
+            { _id: new ObjectId(id) },
+            { $set: { agendaJobId: job.attrs._id } }
+        );
+    }
     res.status(202).json({ ids, failed_ids, status: 'queued' });
 });
 

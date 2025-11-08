@@ -1,7 +1,7 @@
 export type Provider = 'spotify' | 'apple_music' | 'soundcloud';
 
 export enum state {
-    PENDING = "pending",
+    QUEUED = "queued",
     PROCESSING = "processing",
     SUCCESS = "success",
     ERROR = "error"

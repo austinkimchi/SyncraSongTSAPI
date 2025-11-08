@@ -14,7 +14,7 @@ export async function createTransferDoc(payload: any): Promise<string> {
     const now = new Date();
     const { insertedId } = await db.collection(COLLECTION).insertOne({
         ...payload,
-        status: state.PENDING,
+        status: state.QUEUED,
         attempts: 0,
         runAt: payload.runAt || now,
         createdAt: now,
