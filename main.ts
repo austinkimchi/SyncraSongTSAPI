@@ -4,6 +4,7 @@ import morgan from 'morgan';
 import jwt from 'jsonwebtoken';
 
 import { startDatabase } from './mongo.js';
+import { startAgenda } from './agenda/lifecycle.js';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -39,6 +40,15 @@ function startServer(attempts = 0) {
             setTimeout(() => {
                 startServer(attempts + 1);
             }, 2000);
+        });
+
+    startAgenda()
+        .then(() => {
+            console.log('[Agenda] Agenda worker started');
+        })
+        .catch(err => {
+            console.error('[Agenda] Failed to start Agenda worker');
+            console.error(err);
         });
 }
 
