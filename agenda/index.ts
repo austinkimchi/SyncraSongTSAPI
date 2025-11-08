@@ -11,7 +11,7 @@ export async function getAgenda(): Promise<Agenda> {
     if (agenda) return agenda;
     agenda = new Agenda({
         mongo: db as any,
-        db: { collection: 'transferJobs', address: process.env.MongoURI as string },
+        db: { collection: 'agendaJobs', address: process.env.MongoURI as string },
         processEvery: '1 second',
         defaultConcurrency: 5,
         defaultLockLifetime: 5 * 60 * 1000,
