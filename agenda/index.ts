@@ -1,5 +1,4 @@
 import Agenda from 'agenda';
-import { db } from '../mongo.js';
 import { registerJobs } from './registerJobs.js';
 
 if (!process.env.MongoURI)
@@ -9,8 +8,8 @@ let agenda: Agenda | null = null;
 
 export async function getAgenda(): Promise<Agenda> {
     if (agenda) return agenda;
-    agenda = new Agenda({
-        mongo: db as any,
+
+    agenda = await new Agenda({
         db: { collection: 'agendaJobs', address: process.env.MongoURI as string },
         processEvery: '1 second',
         defaultConcurrency: 5,
