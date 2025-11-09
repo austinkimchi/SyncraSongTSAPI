@@ -1,4 +1,4 @@
-import { API_router, db } from "../api.js";
+import { API_router, db, getUserId } from "../api.js";
 
 import type { Provider } from "../../../types/general.js";
 import type { ProviderConfig, Intent, StateDoc } from "../../../types/oauth.js";
@@ -10,15 +10,18 @@ import { createHash, randomBytes } from "crypto";
  */
 API_router.post('/oauth/link', async (req, res, next) => {
     try {
-        const { intent, provider, redirectUri } = req.body as {
+        const { intent, provider, redirectUri, token } = req.body as {
             provider: Provider;
             intent: Intent;
             redirectUri?: string;
+            token?: string;
         };
         if (!provider || !intent) return res.status(400).json({ message: 'provider and intent are required.' });
 
         const cfg = PROVIDERS[provider];
         if (!cfg) return res.status(400).json({ message: 'Unsupported provider.' });
+
+        const userId = token ? getUserId(req) : null;
 
         // Create state entry in database
         const state_str = randomString(48)
@@ -30,7 +33,7 @@ API_router.post('/oauth/link', async (req, res, next) => {
             provider: provider,
             intent: intent,
             createdAt: new Date(),
-            userId: null,
+            userId: userId,
             codeVerifier: codeVerifier,
             redirectUri: redirectUri || cfg.redirectUri
         });
