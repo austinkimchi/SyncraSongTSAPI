@@ -3,6 +3,7 @@ import type { Provider } from "./general.js";
 export interface OAuthEntry {
     provider: Provider;
     accessToken: string;
+    refreshToken: string;
     providerId: string;
 }
 export interface UserDoc {

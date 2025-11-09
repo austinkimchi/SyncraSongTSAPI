@@ -26,12 +26,13 @@ API_router.post("/oauth/create-account", async (req, res, next) => {
         if (!s) return res.status(400).json({ message: "Invalid state" });
         if (isExpired(s.createdAt)) return res.status(400).json({ message: "State expired" });
         if (s.intent !== "login") return res.status(400).json({ message: "State not for signup" });
-        if (!s.tempProviderUserId || !s.tempAccessToken) //  this shouldn't happen
+        if (!s.tempProviderUserId || !s.tempAccessToken || !s.tempRefreshToken) //  this shouldn't happen
             return res.status(400).json({ message: "Missing provider credentials on state" });
 
         const provider = s.provider as Provider;
         const providerUserId = s.tempProviderUserId;
         const providerAccessToken = s.tempAccessToken;
+        const providerRefreshToken = s.tempRefreshToken;
 
         const users = db.collection<UserDoc>("users");
 
@@ -69,6 +70,7 @@ API_router.post("/oauth/create-account", async (req, res, next) => {
                     provider,
                     providerId: providerUserId,
                     accessToken: providerAccessToken,
+                    refreshToken: providerRefreshToken,
                 },
             ],
         };
