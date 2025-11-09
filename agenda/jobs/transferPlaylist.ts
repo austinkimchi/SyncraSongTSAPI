@@ -2,6 +2,7 @@ import type { Agenda, Job } from 'agenda';
 import { JobNames } from '../jobNames.js';
 import type { TransferPlaylistData } from '../../types/jobs.js';
 import { runTransfer } from '../../services/transfer/runner.js';
+import type { TransferJobDoc } from '../../services/transfer/types.js';
 import { getTransferDoc, markJobFailed, markJobSucceeded } from '../../agenda/transferJobs.js';
 import { state } from '../../types/general.js';
 
@@ -12,11 +13,11 @@ export function defineTransferPlaylist(agenda: Agenda) {
             const doc = await getTransferDoc(data.jobId);
             if (!doc || doc.status === state.SUCCESS || doc.status === state.PROCESSING) return;
             console.log(`Starting transfer job ${data.jobId}`);
-            await runTransfer(doc);                  // your provider logic
+            await runTransfer(doc as TransferJobDoc);
             await markJobSucceeded(data.jobId);
         } catch (err: any) {
             await markJobFailed(data.jobId, String(err?.message ?? err));
-            throw err; // let Agenda retry based on your schedule strategy
+            throw err;
         }
     });
 }
