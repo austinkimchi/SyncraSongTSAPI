@@ -161,6 +161,18 @@ export class SpotifyTransferProvider implements TransferProvider {
         return closestMatch;
     }
 
+    async matchByMetadatas(tracks: TransferTrack[]): Promise<Map<string, TrackMatchResult>> {
+        const matches = new Map<string, TrackMatchResult>();
+        for (const track of tracks) {
+            if (!track.name || !track.artists || track.artists.length === 0) continue;
+            const match = await this.matchByMetadata(track.name, track.artists, track.durationMs || 0);
+            if (match) {
+                matches.set(track.isrc || track.name + track.artists.join(','), match);
+            }
+        }
+        return matches;
+    }
+
     async ensurePlaylist(options: { playlistId?: string | null; name: string; description?: string | null; public?: boolean; }): Promise<PlaylistResolution> {
         if (options.playlistId) {
             const existing = await this.api.getPlaylist(options.playlistId);

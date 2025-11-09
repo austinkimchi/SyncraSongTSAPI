@@ -20,6 +20,7 @@ export interface TransferTrack {
     isrc?: string | null;
     upc?: string | null;
     durationMs?: number;
+    created_at?: Date;
     /** Optional provider specific metadata */
     raw?: any;
 }
@@ -44,6 +45,7 @@ export interface TrackMatchResult {
     providerTrackId: string;
     name?: string;
     artists?: string[];
+    created_at?: Date;
 }
 
 export interface TransferProvider {
@@ -54,7 +56,8 @@ export interface TransferProvider {
      */
     matchTracksByIsrc(isrcs: string[]): Promise<Map<string, TrackMatchResult>>;
     matchTracksByUPC(upcs: string[]): Promise<Map<string, TrackMatchResult>>;
-    matchByMetadata?(name: string, artists: string[], duration_ms: Number): Promise<TrackMatchResult | null>;
+    matchByMetadata(name: string, artists: string[], duration_ms: Number): Promise<TrackMatchResult | null>;
+    matchByMetadatas(tracks: TransferTrack[]): Promise<Map<string, TrackMatchResult>>;
     ensurePlaylist(options: {
         playlistId?: string | null;
         name: string;
@@ -63,3 +66,10 @@ export interface TransferProvider {
     }): Promise<PlaylistResolution>;
     addTracks(playlistId: string, providerTrackIds: string[]): Promise<void>;
 }
+
+// Regexes needed for metadata
+const featRegex = /\(feat\.\s+([^)]+)\)/i;
+const parenRegex = /\(.*?\)/g;
+const remixRegex = /remix/gi;
+
+export { featRegex, parenRegex, remixRegex };

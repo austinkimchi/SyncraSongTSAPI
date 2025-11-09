@@ -247,6 +247,48 @@ export class AppleMusicTransferProvider implements TransferProvider {
         return matches;
     }
 
+    async matchByMetadata(name: string, artists: string[], duration_ms: Number): Promise<TrackMatchResult | null> {
+        const developerToken = await this.getDeveloperToken();
+        const storefront = await this.getStorefront();
+        const query = `${name} ${artists.join(' ')}`.trim();
+        const url = `${APPLE_API_BASE}/v1/catalog/${storefront}/search?term=${encodeURIComponent(query)}&types=songs&limit=5`;
+        const res = await doAppleFetch(url, {
+            headers: { Authorization: `Bearer ${developerToken}` },
+        });
+        const candidates = res?.results?.songs?.data ?? [];
+        let bestMatch: any = null;
+        let smallestDurationDiff = Number.MAX_SAFE_INTEGER;
+
+        for (const candidate of candidates) {
+            const candidateDuration = candidate.attributes?.durationInMillis ?? 0;
+            const durationDiff = Math.abs(candidateDuration - Number(duration_ms));
+            if (durationDiff < smallestDurationDiff) {
+                smallestDurationDiff = durationDiff;
+                bestMatch = candidate;
+            }
+        }
+
+        if (bestMatch?.id) {
+            return {
+                providerTrackId: bestMatch.id,
+                name: bestMatch.attributes?.name,
+                artists: bestMatch.attributes?.artistName ? [bestMatch.attributes.artistName] : [],
+            };
+        }
+        return null;
+    }
+
+    async matchByMetadatas(tracks: TransferTrack[]): Promise<Map<string, TrackMatchResult>> {
+        const matches = new Map<string, TrackMatchResult>();
+        for (const track of tracks) {
+            const match = await this.matchByMetadata(track.name, track.artists, track.durationMs || 0);
+            if (match) {
+                matches.set(track.isrc || track.id, match);
+            }
+        }
+        return matches;
+    }
+
     async ensurePlaylist(options: { playlistId?: string | null; name: string; description?: string | null; public?: boolean; }): Promise<PlaylistResolution> {
         if (options.playlistId) {
             // ensure playlist exists
