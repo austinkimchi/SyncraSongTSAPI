@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
-import jwt from 'jsonwebtoken';
 
 import { startDatabase } from './mongo.js';
 import { startAgenda } from './agenda/lifecycle.js';
@@ -17,8 +16,6 @@ import authRoute from './routes/auth/auth.js';
 app.use('/auth', authRoute);
 
 import apiRoute from './routes/api/api.js';
-import { getAgenda } from './agenda/index.js';
-import { JobNames } from './agenda/jobNames.js';
 app.use('/api', apiRoute);
 
 app.get('/', (req, res) => {

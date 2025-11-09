@@ -65,7 +65,7 @@ export async function runTransfer(doc: TransferJobDoc): Promise<void> {
 
         const sourceProvider: TransferProvider = createTransferProvider(doc.source.provider, sourceOAuth);
         const targetProvider: TransferProvider = createTransferProvider(doc.target.provider, targetOAuth);
-        console.log(`Starting transfer from ${doc.source.provider} to ${doc.target.provider} for user ${user._id.toString()}`);
+        console.info(`Starting transfer from ${doc.source.provider} to ${doc.target.provider} for user ${user._id.toString()}`);
 
         meta.phase = 'fetching-source-playlist';
         meta.source = { provider: doc.source.provider, playlistId: doc.source.playlistId };
