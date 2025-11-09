@@ -1,9 +1,5 @@
 import { API_router, getUserId } from './api.js';
-import { getAgenda } from '../../agenda/index.js';
-import { JobNames } from '../../agenda/jobNames.js';
-import { db } from './api.js';
 import { createTransferDoc, getTransferDoc } from '../../agenda/transferJobs.js';
-import { ObjectId } from 'mongodb';
 
 /**
  * Initiate a playlist transfer
@@ -17,7 +13,7 @@ API_router.post('/transfer', async (req, res) => {
         return res.status(400).json({ error: 'invalid request body' });
 
     // body will contain an array of {srcPlaylistID, srcPlatform, destPlatform}
-    const ids = [];
+    const ids: string[] = [];
     const failed_ids: string[] = [];
 
     for (const item of req.body) {
@@ -25,24 +21,17 @@ API_router.post('/transfer', async (req, res) => {
             failed_ids.push(item.srcPlaylistID || '');
             return res.status(400).json({ error: 'invalid playlist transfer item' });
         }
+        
         const id = await createTransferDoc({
-            userId,
+            userId: userId,
             source: { provider: item.srcPlatform, playlistId: item.srcPlaylistID },
             target: { provider: item.destPlatform },
             options: item.options || {},
         });
+
         ids.push(id);
     }
 
-    const agenda = await getAgenda();
-
-    for (const id of ids) {
-        const job = await agenda.now(JobNames.TransferPlaylist, { jobId: id });
-        await db.collection('transferJobs').updateOne(
-            { _id: new ObjectId(id) },
-            { $set: { agendaJobId: job.attrs._id } }
-        );
-    }
     res.status(202).json({ ids, failed_ids, status: 'queued' });
 });
 
