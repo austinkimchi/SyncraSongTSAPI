@@ -37,14 +37,14 @@ export async function getTransferDoc(id: string) {
 export async function markJobSucceeded(id: string) {
     await db.collection(COLLECTION).updateOne(
         { _id: new ObjectId(id) },
-        { $set: { status: 'succeeded', updatedAt: new Date() } }
+        { $set: { status: state.SUCCESS, updatedAt: new Date() } }
     );
 }
 
 export async function markJobFailed(id: string, error: string) {
     await db.collection(COLLECTION).updateOne(
         { _id: new ObjectId(id) },
-        { $inc: { attempts: 1 }, $set: { status: 'failed', lastError: error, updatedAt: new Date() } }
+        { $inc: { attempts: 1 }, $set: { status: state.ERROR, lastError: error, updatedAt: new Date() } }
     );
 }
 
@@ -59,7 +59,7 @@ export async function requeueStaleRunning(staleMs: number) {
 export async function pruneOld(days: number) {
     const cutoff = new Date(Date.now() - days * 86400000);
     await db.collection(COLLECTION).deleteMany({
-        status: { $in: ['succeeded', 'failed', 'canceled'] },
+        status: { $in: [state.SUCCESS, state.ERROR, 'canceled'] },
         updatedAt: { $lt: cutoff },
     });
 }
