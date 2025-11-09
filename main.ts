@@ -17,6 +17,8 @@ import authRoute from './routes/auth/auth.js';
 app.use('/auth', authRoute);
 
 import apiRoute from './routes/api/api.js';
+import { getAgenda } from './agenda/index.js';
+import { JobNames } from './agenda/jobNames.js';
 app.use('/api', apiRoute);
 
 app.get('/', (req, res) => {
@@ -43,7 +45,7 @@ function startServer(attempts = 0) {
         });
 
     startAgenda()
-        .then(() => {
+        .then(async () => {
             console.log('[Agenda] Agenda worker started');
         })
         .catch(err => {
