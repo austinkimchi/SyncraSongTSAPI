@@ -38,6 +38,7 @@ API_router.all("/oauth/callback/:provider", async (req, res, next) => {
                             provider: "apple_music",
                             providerId: "", // No user ID available from Apple Music
                             accessToken: decodeURI(tokenFromBody),
+                            refreshToken: "", // No refresh token needed for Apple Music
                         },
                     }
                 }
@@ -61,6 +62,7 @@ API_router.all("/oauth/callback/:provider", async (req, res, next) => {
 
         let providerUserId = "";
         let providerAccessToken = "";
+        let providerRefreshToken = "";
 
         if (provider === "spotify") {
             if (!code) return res.status(400).json({ message: "Missing authorization code" });
@@ -76,6 +78,7 @@ API_router.all("/oauth/callback/:provider", async (req, res, next) => {
                 codeVerifier: s.codeVerifier!,
             });
             providerAccessToken = tok.access_token;
+            providerRefreshToken = tok.refresh_token!;
 
             // Validate token by fetching user profile
             const me = await spotifyMe(providerAccessToken);
@@ -96,6 +99,7 @@ API_router.all("/oauth/callback/:provider", async (req, res, next) => {
                 redirectUri: s.redirectUri!,
             });
             providerAccessToken = tok.access_token;
+            providerRefreshToken = tok.refresh_token;
 
             const me = await soundcloudMe(providerAccessToken);
             if (!me?.id) return res.status(401).json({ message: "soundcloud token invalid" });
@@ -105,7 +109,6 @@ API_router.all("/oauth/callback/:provider", async (req, res, next) => {
 
         // Intent: login, connect
         const users = db.collection<UserDoc>("users");
-
         if (s.intent === "login") {
             // Try to find an existing user by providerId
             const existing = await users.findOne({
@@ -116,13 +119,20 @@ API_router.all("/oauth/callback/:provider", async (req, res, next) => {
             await states.updateOne({ _id: s._id }, { $set: { usedAt: new Date() } });
 
             if (existing) {
+                refreshUserOAuth(existing._id).catch(err => {
+                    console.error("Failed to refresh user OAuth tokens on login:", err);
+                });
                 // Update access token in DB
                 await users.updateOne(
                     { _id: existing._id, "oauth.provider": provider },
-                    { $set: { "oauth.$.accessToken": providerAccessToken } });
-
-                // delete state record
-                await states.deleteOne({ _id: s._id });
+                    { $set: { "oauth.$.accessToken": providerAccessToken, "oauth.$.refreshToken": providerRefreshToken } }
+                );
+                try {
+                    // delete state record
+                    await states.deleteOne({ _id: s._id });
+                } catch (err) {
+                    console.error("Failed to delete OAuth state record:", err);
+                }
 
                 // Sign the app JWT
                 const appJwt = jwt.sign(
@@ -143,6 +153,7 @@ API_router.all("/oauth/callback/:provider", async (req, res, next) => {
                         $set: {
                             tempProviderUserId: providerUserId,
                             tempAccessToken: providerAccessToken,
+                            tempRefreshToken: providerRefreshToken,
                         }
                     }
                 );
@@ -166,7 +177,15 @@ API_router.all("/oauth/callback/:provider", async (req, res, next) => {
             if (upd.matchedCount === 0) {
                 await users.updateOne(
                     { _id: s.userId },
-                    { $push: { oauth: { provider, providerId: providerUserId, accessToken: providerAccessToken } } }
+                    {
+                        $push: {
+                            oauth: {
+                                provider, providerId: providerUserId,
+                                accessToken: providerAccessToken,
+                                refreshToken: providerRefreshToken
+                            }
+                        }
+                    }
                 );
             }
 
@@ -212,8 +231,8 @@ async function exchangeSpotifyCode(args: {
         access_token: string;
         token_type: "Bearer";
         expires_in: number;
-        refresh_token?: string;
-        scope?: string;
+        refresh_token: string;
+        scope: string;
     };
 }
 
@@ -248,8 +267,8 @@ async function exchangeSoundCloudCode(args: {
 
     return (await r.json()) as {
         access_token: string;
+        refresh_token: string;
         expires_in: number;
-        refresh_token?: string;
         scope?: string;
         token_type: string;
     };
@@ -273,4 +292,100 @@ async function spotifyMe(accessToken: string) {
     });
     if (!r.ok) return null;
     return (await r.json()) as { id: string; display_name?: string; email?: string };
+}
+
+
+
+/**
+ * Invokes when user logins; Checks all OAuth tokens for the user and refreshes them.
+ * @param userId 
+ * @param provider 
+ */
+async function refreshUserOAuth(userId: string): Promise<void> {
+    const user = await db.collection<UserDoc>("users").findOne({ _id: userId });
+    if (!user || !user.oauth) return;
+    console.log(`Refreshing OAuth tokens for user ${userId} with ${user.oauth.length} providers.`);
+
+    for (const entry of user.oauth) {
+        if (entry.provider === "apple_music") continue; // Apple Music has non-expiring tokens
+        const cfg = PROVIDERS[entry.provider];
+        if (!cfg || !entry.refreshToken) continue;
+        try {
+            let newTokens: { accessToken: string; refreshToken?: string };
+            switch (entry.provider) {
+                case "spotify":
+                    newTokens = await refreshSpotifyToken(entry.refreshToken);
+                    break;
+                case "soundcloud":
+                    newTokens = await refreshSoundCloudToken(entry.refreshToken);
+                    break;
+                default:
+                    continue;
+            }
+            await db.collection<UserDoc>("users").updateOne(
+                { _id: userId, "oauth.provider": entry.provider },
+                {
+                    $set: {
+                        "oauth.$.accessToken": newTokens.accessToken,
+                        ...(newTokens.refreshToken ? { "oauth.$.refreshToken": newTokens.refreshToken } : {})
+                    }
+                }
+            );
+        } catch (err) {
+            console.error(`Failed to refresh ${entry.provider} token for user ${userId}:`, err);
+        }
+    }
+
+    return;
+}
+
+async function refreshSpotifyToken(refreshToken: string): Promise<{ accessToken: string; refreshToken?: string }> {
+    const cfg = PROVIDERS['spotify'];
+    if (!cfg.clientId || !cfg.clientSecret) throw new Error("Spotify provider is not properly configured.");
+    const url = new URL("https://accounts.spotify.com/api/token");
+    const body = new URLSearchParams();
+    body.append('grant_type', 'refresh_token');
+    body.append('refresh_token', refreshToken);
+
+    const resp = await fetch(url.toString(), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization': 'Basic ' + Buffer.from(`${cfg.clientId}:${cfg.clientSecret}`).toString('base64'),
+        },
+        body: body.toString(),
+    });
+    if (!resp.ok) throw new Error(`Failed to refresh Spotify token: ${resp.status} ${resp.statusText}`);
+
+    const data = await resp.json();
+    console.log(`Spotify token refreshed successfully.`, data);
+    return {
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token,
+    };
+}
+
+async function refreshSoundCloudToken(refreshToken: string): Promise<{ accessToken: string; refreshToken?: string }> {
+    const cfg = PROVIDERS['soundcloud'];
+    if (!cfg.clientId || !cfg.clientSecret) throw new Error("SoundCloud provider is not properly configured.");
+    const url = new URL("https://secure.soundcloud.com/oauth/token");
+    const body = new URLSearchParams();
+    body.append('grant_type', 'refresh_token');
+    body.append('client_id', cfg.clientId);
+    body.append('client_secret', cfg.clientSecret);
+    body.append('refresh_token', refreshToken);
+    const resp = await fetch(url.toString(), {
+        method: 'POST',
+        headers: {
+            'accept': 'application/json; charset=utf-8',
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: body.toString(),
+    });
+    if (!resp.ok) throw new Error(`Failed to refresh SoundCloud token: ${resp.status} ${resp.statusText}`);
+    const data = await resp.json();
+    return {
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token,
+    };
 }

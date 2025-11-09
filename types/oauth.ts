@@ -1,11 +1,13 @@
 import type { Provider } from "./general.js";
 
 if (!process.env.SPOTIFY_CLIENT_ID ||
+    !process.env.SPOTIFY_CLIENT_SECRET ||
     !process.env.SPOTIFY_REDIRECT_URI ||
     !process.env.APPLE_MUSICKIT_CLIENTID)
     throw new Error('One or more OAuth environment variables are not set.');
 
 if (!process.env.SOUNDCLOUD_CLIENT_ID ||
+    !process.env.SOUNDCLOUD_CLIENT_SECRET ||
     !process.env.SOUNDCLOUD_REDIRECT_URI)
     throw new Error('One or more OAuth environment variables are not set.');
 
@@ -21,6 +23,7 @@ export interface StateDoc {
     redirectUri: string;
     tempProviderUserId?: string;        // set after validation
     tempAccessToken?: string;           // set after validation
+    tempRefreshToken?: string | null;   // set after validation
 }
 
 export type ProviderConfig = {
@@ -36,6 +39,7 @@ export const PROVIDERS: Record<Provider, ProviderConfig> = {
     spotify: {
         authUrl: 'https://accounts.spotify.com/authorize',
         clientId: process.env.SPOTIFY_CLIENT_ID,
+        clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
         redirectUri: process.env.SPOTIFY_REDIRECT_URI,
         scopes: [
             'user-read-private',
@@ -55,6 +59,7 @@ export const PROVIDERS: Record<Provider, ProviderConfig> = {
     soundcloud: {
         authUrl: 'https://secure.soundcloud.com/authorize',
         clientId: process.env.SOUNDCLOUD_CLIENT_ID,
+        clientSecret: process.env.SOUNDCLOUD_CLIENT_SECRET,
         redirectUri: process.env.SOUNDCLOUD_REDIRECT_URI,
         scopes: [
             'non-expiring'
