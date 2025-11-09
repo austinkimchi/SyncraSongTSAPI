@@ -87,7 +87,7 @@ export async function runTransfer(doc: TransferJobDoc): Promise<void> {
             .map(track => ({ name: track.name, artists: track.artists }));
 
         const uniqueIsrcs = Array.from(new Set(tracksWithIsrc.map(track => track.isrc!.trim())));
-        const matchesMap = await targetProvider.matchTracksByIsrc(uniqueIsrcs);
+        const matchesMap = doc.source.provider === 'soundcloud' ? await targetProvider.matchByMetadatas(sourcePlaylist.tracks) : await targetProvider.matchTracksByIsrc(uniqueIsrcs);
 
         const matchedProviderTrackIds: string[] = [];
         const unmatchedTracks: Array<{ name: string; artists: string[]; isrc: string }> = [];
@@ -101,8 +101,7 @@ export async function runTransfer(doc: TransferJobDoc): Promise<void> {
                 unmatchedTracks.push({ name: track.name, artists: track.artists, isrc });
             }
         }
-        if (unmatchedTracks.length > 0) {
-            // search using metadata if available
+        if (unmatchedTracks.length > 0 && doc.source.provider !== 'soundcloud') {
             if (typeof targetProvider.matchByMetadata === 'function') {
                 for (const trackInfo of unmatchedTracks.slice()) {
                     const track_index = sourcePlaylist.tracks.findIndex(t => t.isrc === trackInfo.isrc);
@@ -169,7 +168,8 @@ export async function runTransfer(doc: TransferJobDoc): Promise<void> {
         });
 
         let transferred = 0;
-        const chunkSize = doc.target.provider === "spotify" ? 100 : 25;
+        // spotify = 100, soundcloud = 200, apple music/others = 25
+        let chunkSize = doc.target.provider === 'spotify' ? 100 : doc.target.provider === 'soundcloud' ? 200 : 25;
         for (let i = 0; i < matchedProviderTrackIds.length; i += chunkSize) {
             const chunk = matchedProviderTrackIds.slice(i, i + chunkSize);
             await targetProvider.addTracks(playlistResolution.playlistId, chunk);

@@ -13,6 +13,9 @@ if (!process.env.SPOTIFY_SCOPES) throw new Error('SPOTIFY_SCOPES not defined in 
 if (!process.env.APPLE_MUSICKIT_TEAMID) throw new Error('APPLE_MUSICKIT_TEAMID not defined in environment variables');
 if (!process.env.APPLE_MUSICKIT_KEYID) throw new Error('APPLE_MUSICKIT_KEYID not defined in environment variables');
 if (!process.env.APPLE_MUSICKIT_P8PATH) throw new Error('APPLE_MUSICKIT_PRIVATEKEY_PATH not defined in environment variables');
+if (!process.env.SOUNDCLOUD_CLIENT_ID) throw new Error('SOUNDCLOUD_CLIENT_ID not defined in environment variables');
+if (!process.env.SOUNDCLOUD_CLIENT_SECRET) throw new Error('SOUNDCLOUD_CLIENT_SECRET not defined in environment variables');
+if (!process.env.SOUNDCLOUD_REDIRECT_URI) throw new Error('SOUNDCLOUD_REDIRECT_URI not defined in environment variables');
 
 export const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -37,6 +40,7 @@ export default API_router;
     loadRoutesFromDirectory('oauth');
     loadRoutesFromDirectory('spotify');
     loadRoutesFromDirectory('apple_music');
+    loadRoutesFromDirectory('soundcloud');
     import('./transfer.js');
 })();
 
