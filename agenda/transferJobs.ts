@@ -1,6 +1,8 @@
 import { ObjectId } from 'mongodb';
 import { db } from '../mongo.js';
 import { state } from '../types/general.js';
+import { getAgenda } from './index.js';
+import { JobNames } from './jobNames.js';
 
 const COLLECTION = 'transferJobs';
 
@@ -16,10 +18,15 @@ export async function createTransferDoc(payload: any): Promise<string> {
         ...payload,
         status: state.QUEUED,
         attempts: 0,
-        runAt: payload.runAt || now,
+        runAt: payload?.runAt || now,
         createdAt: now,
         updatedAt: now,
     });
+
+    const agenda = await getAgenda();
+    if (!agenda) throw new Error('Agenda not initialized');
+    await agenda.now(JobNames.TransferPlaylist, { jobId: insertedId.toString() });
+
     return insertedId.toString();
 }
 
