@@ -104,11 +104,12 @@ export class SpotifyTransferProvider implements TransferProvider {
 
             // Filter out tracks not from the main artist's album
             const validTrack = items.find(t => {
+                const isrcMatch = t.external_ids?.isrc?.toLowerCase().trim() === trimmed.toLowerCase();
                 const albumTypeOk = t.album.album_type === "album" || t.album.album_type === "single";
                 const sameArtist =
                     t.artists.length > 0 &&
-                    t.album.artists.some(a => t.artists.some(b => a.id === b.id));
-                return albumTypeOk && sameArtist;
+                    t.album.artists.some(a => t.artists.some(b => a.name.toLowerCase().trim() === b.name.toLowerCase().trim()));
+                return isrcMatch || albumTypeOk && sameArtist;
             });
 
             if (validTrack?.uri) {
@@ -121,7 +122,7 @@ export class SpotifyTransferProvider implements TransferProvider {
             }
         }
 
-        return matches;
+        return matches
     }
 
 
