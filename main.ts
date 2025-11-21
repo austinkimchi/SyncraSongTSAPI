@@ -18,6 +18,9 @@ app.use('/auth', authRoute);
 import apiRoute from './routes/api/api.js';
 app.use('/api', apiRoute);
 
+import testRoute from './routes/test/test.js';
+app.use('/test', testRoute);
+
 app.get('/', (req, res) => {
     res.send(`API for ${process.env.APP_NAME} is online`);
 });

@@ -56,7 +56,7 @@ export interface TransferProvider {
      */
     matchTracksByIsrc(isrcs: string[]): Promise<Map<string, TrackMatchResult>>;
     matchTracksByUPC(upcs: string[]): Promise<Map<string, TrackMatchResult>>;
-    matchByMetadata(name: string, artists: string[], duration_ms: Number): Promise<TrackMatchResult | null>;
+    matchByMetadata(name: string, artists: string[], duration_ms: Number, isrc?: string | null): Promise<TrackMatchResult | null>;
     matchByMetadatas(tracks: TransferTrack[]): Promise<Map<string, TrackMatchResult>>;
     ensurePlaylist(options: {
         playlistId?: string | null;

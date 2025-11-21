@@ -85,9 +85,8 @@ export async function runTransfer(doc: TransferJobDoc): Promise<void> {
         const missingIsrc = sourcePlaylist.tracks
             .filter(track => !track.isrc || track.isrc.trim() === '')
             .map(track => ({ name: track.name, artists: track.artists }));
-
         const uniqueIsrcs = Array.from(new Set(tracksWithIsrc.map(track => track.isrc!.trim())));
-        const matchesMap = doc.source.provider === 'soundcloud' ? await targetProvider.matchByMetadatas(sourcePlaylist.tracks) : await targetProvider.matchTracksByIsrc(uniqueIsrcs);
+        const matchesMap = await targetProvider.matchTracksByIsrc(uniqueIsrcs);
 
         const matchedProviderTrackIds: string[] = [];
         const unmatchedTracks: Array<{ name: string; artists: string[]; isrc: string }> = [];
@@ -106,7 +105,8 @@ export async function runTransfer(doc: TransferJobDoc): Promise<void> {
                 for (const trackInfo of unmatchedTracks.slice()) {
                     const track_index = sourcePlaylist.tracks.findIndex(t => t.isrc === trackInfo.isrc);
                     const track_duration = track_index ? (sourcePlaylist.tracks[track_index]!).durationMs || 0 : 0;
-                    const match = await targetProvider.matchByMetadata(trackInfo.name, trackInfo.artists, track_duration);
+                    const track_isrc = trackInfo.isrc;
+                    const match = await targetProvider.matchByMetadata(trackInfo.name, trackInfo.artists, track_duration, track_isrc);
                     if (match) {
                         // push at same index to preserve order
                         if (track_index !== -1) {
@@ -123,6 +123,17 @@ export async function runTransfer(doc: TransferJobDoc): Promise<void> {
                 }
             }
         }
+        if (matchedProviderTrackIds.length === 0) {
+            meta.phase = 'no-matches-found';
+            await updateTransferJob(jobId, {
+                status: state.ERROR,
+                transferredTracks: 0,
+                totalTracks,
+                meta,
+            });
+            return;
+        }
+
 
         meta.phase = 'preparing-destination';
         meta.matching = {

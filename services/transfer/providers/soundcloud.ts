@@ -11,6 +11,10 @@ import {
 
 const SOUNDCLOUD_API_BASE = "https://api.soundcloud.com";
 const SEARCH_LIMIT = 10;
+if (!process.env.SOUNDCLOUD_USER_CLIENT_ID)
+    throw new Error("SoundCloud user client ID not defined in environment variables");
+
+const USER_CLIENT_ID = process.env.SOUNDCLOUD_USER_CLIENT_ID;
 
 type SoundCloudUser = { id: number; username?: string };
 type SoundCloudTrack = {
@@ -18,13 +22,11 @@ type SoundCloudTrack = {
     title?: string;
     duration?: number;
     user?: { username?: string };
-    publisher_metadata?: {
-        artist?: string;
-        isrc?: string;
-        urn?: string;
-        upc?: string;
-        release_title?: string;
-    };
+    artist?: string;
+    isrc?: string;
+    urn?: string;
+    upc?: string;
+    release_title?: string;
     artwork_url?: string | null;
     created_at?: string;
 };
@@ -96,21 +98,19 @@ export class SoundCloudTransferProvider implements TransferProvider {
         if (!Array.isArray(data)) return [];
         return data.map((track): TransferTrack => {
             const artists: string[] = [];
-            if (track.publisher_metadata?.artist) artists.push(track.publisher_metadata.artist);
+            if (track?.artist) artists.push(track.artist);
             if (track.user?.username && !artists.includes(track.user.username)) artists.push(track.user.username);
 
             const transferTrack: TransferTrack = {
                 id: track.id?.toString() ?? "",
                 name: track.title ?? "",
                 artists,
-                upc: track.publisher_metadata?.upc ?? null,
+                upc: track.upc ?? null,
+                isrc: track.isrc ?? null,
                 raw: track
             };
 
-            const releaseTitle = track.publisher_metadata?.release_title;
-            if (releaseTitle) transferTrack.album = releaseTitle;
-
-            const isrc = track.publisher_metadata?.isrc?.trim();
+            const isrc = track.isrc?.trim();
             if (isrc) transferTrack.isrc = isrc;
 
             if (typeof track.duration === "number") transferTrack.durationMs = track.duration;
@@ -120,7 +120,7 @@ export class SoundCloudTransferProvider implements TransferProvider {
     }
 
     async getPlaylist(playlistId: string): Promise<SourcePlaylist> {
-        const playlist: SoundCloudPlaylist = await this.request(`/playlists/${encodeURIComponent(playlistId)}?representation=full`);
+        const playlist: SoundCloudPlaylist = await this.request(`/playlists/${encodeURIComponent(playlistId)}?access=playable,preview,blocked`);
         if (!playlist?.id) throw new Error("SoundCloud playlist not found");
 
         const tracks = this.extractTracks(playlist.tracks);
@@ -146,7 +146,7 @@ export class SoundCloudTransferProvider implements TransferProvider {
             const trimmed = upc.trim();
             if (!trimmed) continue;
             const results = await this.searchTracks(`linked_partitioning=1&limit=${SEARCH_LIMIT}&filter=public&q=${encodeURIComponent(trimmed)}`);
-            const track = results.find(t => t.publisher_metadata?.upc?.toLowerCase() === trimmed.toLowerCase());
+            const track = results.find(t => t.upc?.toLowerCase() === trimmed.toLowerCase());
             if (track?.id) {
                 const match: TrackMatchResult = {
                     upc: trimmed,
@@ -167,7 +167,7 @@ export class SoundCloudTransferProvider implements TransferProvider {
             const trimmed = isrc.trim();
             if (!trimmed) continue;
             const results = await this.searchTracks(`linked_partitioning=1&limit=${SEARCH_LIMIT}&filter=public&isrc=${encodeURIComponent(trimmed)}`);
-            const track = results.find(t => t.publisher_metadata?.isrc?.toLowerCase() === trimmed.toLowerCase());
+            const track = results.find(t => t.isrc?.toLowerCase() === trimmed.toLowerCase());
             if (track?.id) {
                 const match: TrackMatchResult = {
                     isrc: trimmed,
@@ -180,7 +180,7 @@ export class SoundCloudTransferProvider implements TransferProvider {
             }
 
             const fallbackResults = await this.searchTracks(`linked_partitioning=1&limit=${SEARCH_LIMIT}&filter=public&q=${encodeURIComponent(trimmed)}`);
-            const fallback = fallbackResults.find(t => t.publisher_metadata?.isrc?.toLowerCase() === trimmed.toLowerCase());
+            const fallback = fallbackResults.find(t => t.isrc?.toLowerCase() === trimmed.toLowerCase());
             if (fallback?.id) {
                 const match: TrackMatchResult = {
                     isrc: trimmed,
@@ -194,47 +194,223 @@ export class SoundCloudTransferProvider implements TransferProvider {
         return matches;
     }
 
-    async matchByMetadata(name: string, artists: string[], duration_ms: Number): Promise<TrackMatchResult | null> {
-        // remove (fea.t. Artist) or similar from name
-        name.replace(featRegex, "").trim();
-        name.replace(parenRegex, "").trim();
+    private async alternativeSearch(name: string, artists: string[]): Promise<SoundCloudTrack[]> {
+        try {
+            const res = await fetch(`https://api-v2.soundcloud.com/search?q=${encodeURIComponent(name + " " + artists.join(" "))}&client_id=${USER_CLIENT_ID}`, {
+                method: "GET",
+                headers: {
+                    Accept: "application/json",
+                },
+            });
+
+            if (!res.ok) return [];
+            const data: SoundCloudCollectionResponse<SoundCloudTrack> = await res.json();
+            if (Array.isArray(data.collection)) return data.collection;
+            return [];
+        } catch (err) {
+            console.error(`SoundCloud alternative search error: ${err}`);
+        }
+        return [];
+    }
+
+    private weight = {
+        title: 0.5,
+        artist: 0.3,
+        remixPenalty: -0.15,
+        isrcBonus: 0.05,
+    }
+    private SCORE_THRESHOLD = 0.60;
+
+    async matchByMetadata(name: string, artists: string[], duration_ms: Number, isrc?: string | null): Promise<TrackMatchResult | null> {
+        void duration_ms; // keep parameter but don't use it in scoring
+
+        // remove (feat. Artist) or similar from name
+        name = name.replace(parenRegex, "").trim();
         artists = artists.slice(0, 1);
-        // const queryParts = [name, ...artists];
-        // const query = queryParts.filter(Boolean).join(" ");
-        const results = await this.searchTracks(`linked_partitioning=1&limit=${SEARCH_LIMIT}&filter=public&q=${encodeURIComponent(name + " " + artists.join(" "))}`);
-        if (results.length === 0) return null;
+        const targetArtist = (artists[0] || "").toLowerCase().trim();
 
-        const targetDuration = Number(duration_ms) || 0;
-        let best: TrackMatchResult | null = null;
-        let smallestDiff = Number.MAX_SAFE_INTEGER;
-        const max_diff = 5000; // 5 seconds tolerance
+        const targetTitleTokens = tokenize(normalizeTitle(name));
+        const weight = this.weight;
 
-        for (const track of results) {
-            if (!track?.id) continue;
-            const duration = track.duration ?? 0;
-            const diff = targetDuration > 0 ? Math.abs(duration - targetDuration) : 0;
-            if (diff < smallestDiff) {
-                smallestDiff = diff;
+        // 1) alt search, no artist
+        let results: SoundCloudTrack[] = await this.alternativeSearch(name, []);
+        if (isrc) {
+            const direct = pickUniqueIsrcMatch(results, isrc);
+            if (direct) return direct;
+        }
+        let attempt = evaluateResults(results);
+        if (attempt && attempt.best && attempt.bestScore >= this.SCORE_THRESHOLD) {
+            return attempt.best;
+        }
+
+        // 2) alt serach w/ artist
+        results = await this.alternativeSearch(name, artists);
+        if (isrc) {
+            const direct = pickUniqueIsrcMatch(results, isrc);
+            if (direct) return direct;
+        }
+        attempt = evaluateResults(results);
+        if (attempt && attempt.best && attempt.bestScore >= this.SCORE_THRESHOLD) {
+            return attempt.best;
+        }
+
+        // 3) fallback to generic search (not best results)
+        const q = `${name} ${artists.join(" ")}`.trim();
+        if (artists[0] === "-") return null;
+        results = await this.searchTracks(
+            `linked_partitioning=1&limit=${SEARCH_LIMIT}&filter=public&q=${encodeURIComponent(q)}`
+        );
+        if (isrc) {
+            const direct = pickUniqueIsrcMatch(results, isrc);
+            if (direct) return direct;
+        }
+        attempt = evaluateResults(results);
+        if (attempt && attempt.best && attempt.bestScore >= this.SCORE_THRESHOLD) {
+            return attempt.best;
+        }
+
+        // If all three attempts fail to meet threshold, give up
+        return null;
+
+        function pickUniqueIsrcMatch(results: SoundCloudTrack[], isrc?: string): TrackMatchResult | null {
+            if (!isrc || !results || results.length === 0) return null;
+
+            const targetIsrc = isrc.trim().toUpperCase();
+            const matches = results.filter(track => {
+                const trackIsrc = track.isrc;
+                if (!trackIsrc) return false;
+                return trackIsrc.trim().toUpperCase() === targetIsrc;
+            });
+
+            if (matches.length === 1) {
+                const track = matches[0];
+                if (!track?.id) return null;
+
                 const candidate: TrackMatchResult = {
                     providerTrackId: track.id.toString(),
                 };
                 if (track.title) candidate.name = track.title;
                 if (track.user?.username) candidate.artists = [track.user.username];
-                const isrc = track.publisher_metadata?.isrc?.trim();
-                if (isrc) candidate.isrc = isrc;
-                best = candidate;
-                if (diff === 0 && targetDuration > 0) break;
-            }
-        }
-        if (smallestDiff > max_diff) return null;
+                const trackIsrc = track.isrc?.trim();
+                if (trackIsrc) candidate.isrc = trackIsrc;
 
-        return best;
+                return candidate;
+            }
+
+            return null;
+        }
+
+        function evaluateResults(results: SoundCloudTrack[]): { best: TrackMatchResult | null; bestScore: number } | null {
+            if (!results || results.length === 0) return null;
+
+            let best: TrackMatchResult | null = null;
+            let bestScore = 0;
+
+            for (const track of results) {
+                if (!track?.id) continue;
+
+                const candidateTitle = track.title ?? "";
+                const candidateArtist = (track.user?.username ?? "").toLowerCase().trim();
+
+                const normCandidateTitle = normalizeTitle(candidateTitle);
+                const candidateTitleTokens = tokenize(normCandidateTitle);
+
+                // 1) Title similarity: token overlap Jaccard-ish score
+                const titleScore = tokenOverlapScore(targetTitleTokens, candidateTitleTokens);
+
+                // 2) Artist similarity: simple containment check, could be improved with aliases map
+                let artistScore = 0;
+                if (targetArtist && candidateArtist) {
+                    if (candidateArtist.includes(targetArtist) || targetArtist.includes(candidateArtist)) {
+                        artistScore = 1;
+                    } else {
+                        // partial overlap on words
+                        const targetArtistTokens = tokenize(targetArtist);
+                        const candidateArtistTokens = tokenize(candidateArtist);
+                        artistScore = tokenOverlapScore(targetArtistTokens, candidateArtistTokens);
+                    }
+                }
+
+                // 3) Penalize mismatched "remix/live/cover" if not in original title
+                const penalty = remixPenalty(targetTitleTokens, candidateTitleTokens);
+
+                // 4) Small positive weight if ISRC metadata is present
+                const isrcBonus = track.isrc ? weight.isrcBonus : 0;
+                // Weight the components: tweak as needed
+                const totalScore =
+                    weight.title * titleScore +
+                    weight.artist * artistScore +
+                    penalty +
+                    isrcBonus;
+
+                if (totalScore > bestScore) {
+                    bestScore = totalScore;
+
+                    const candidate: TrackMatchResult = {
+                        providerTrackId: track.id.toString(),
+                    };
+                    if (track.title) candidate.name = track.title;
+                    if (track.user?.username) candidate.artists = [track.user.username];
+                    const isrc = track.isrc?.trim();
+                    if (isrc) candidate.isrc = isrc;
+
+                    best = candidate;
+                }
+            }
+
+            return { best, bestScore };
+        }
+
+        function tokenize(text: string): string[] {
+            if (!text) return [];
+            return text
+                .split(/\s+/)
+                .map(t => t.trim())
+                .filter(Boolean);
+        }
+
+        function normalizeTitle(title: string): string {
+            return title
+                .toLowerCase()
+                .replace(featRegex, "")
+                .replace(/[\[\]\(\)\-_,.]/g, " ")
+                .replace(/\s+/g, " ")
+                .trim();
+        }
+
+        function tokenOverlapScore(targetTokens: string[], candidateTokens: string[]): number {
+            if (!targetTokens.length || !candidateTokens.length) return 0;
+
+            const candidateSet = new Set(candidateTokens);
+            let intersection = 0;
+
+            for (const t of targetTokens) {
+                if (candidateSet.has(t)) intersection++;
+            }
+
+            return intersection / targetTokens.length;
+        }
+
+        function remixPenalty(targetTokens: string[], candidateTokens: string[]): number {
+            const flags = ["remix", "live", "cover", "karaoke", "edit"];
+            const targetHas = flags.some(f => targetTokens.includes(f));
+            const candidateHas = flags.some(f => candidateTokens.includes(f));
+
+            if (candidateHas && !targetHas) {
+                return -0.15;
+            }
+            return 0;
+        }
     }
+
+
+
+
 
     async matchByMetadatas(tracks: TransferTrack[]): Promise<Map<string, TrackMatchResult>> {
         const matches = new Map<string, TrackMatchResult>();
         for (const track of tracks) {
-            const match = await this.matchByMetadata(track.name, track.artists, track.durationMs || 0);
+            const match = await this.matchByMetadata(track.name, track.artists, track.durationMs || 0, track.isrc);
             if (match) {
                 matches.set(track.id, match);
             }

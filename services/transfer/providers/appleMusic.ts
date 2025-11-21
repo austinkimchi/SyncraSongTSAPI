@@ -185,6 +185,68 @@ export class AppleMusicTransferProvider implements TransferProvider {
         }
         return matches;
     }
+    private scoreIsrcCandidate(song: any, album: any | undefined): number {
+        const songAttrs = song?.attributes ?? {};
+        const albumAttrs = album?.attributes ?? {};
+
+        const trackName = (songAttrs.name ?? "").toLowerCase();
+        const trackArtist = (songAttrs.artistName ?? "").toLowerCase();
+        const albumName = (albumAttrs.name ?? "").toLowerCase();
+        const albumArtist = (albumAttrs.artistName ?? "").toLowerCase();
+
+        let score = 0;
+
+        // Hard penalties for compilations / "Various Artists"
+        if (albumAttrs.isCompilation) score -= 1000;
+        if (albumArtist === "various artists") score -= 800;
+        if (trackArtist === "various artists") score -= 400;
+
+        // Prefer albums where album artist matches track artist
+        if (albumArtist && trackArtist) {
+            if (albumArtist === trackArtist) {
+                score += 400;
+            } else if (albumArtist.includes(trackArtist) || trackArtist.includes(albumArtist)) {
+                score += 200;
+            }
+        }
+
+        // Prefer albums whose title contains the track title
+        // e.g. "Runaway (U & I) - Single"
+        if (trackName && albumName && albumName.includes(trackName)) {
+            score += 150;
+        }
+
+        // Mild preference for dedicated singles over mixed releases when all else is equal
+        if (albumAttrs.isSingle) {
+            score += 50;
+        }
+
+        // Prefer non-remix/non-live originals unless the track itself is clearly a remix
+        const remixLike = /(remix|mix|live|karaoke|instrumental|version)/i;
+        const trackIsRemix = remixLike.test(trackName);
+        const albumIsRemix = remixLike.test(albumName);
+        if (!trackIsRemix && albumIsRemix) {
+            score -= 100;
+        }
+
+        // Prefer earlier releases (more likely to be the "original" album/single)
+        const releaseDateStr: string | undefined =
+            albumAttrs.releaseDate || songAttrs.releaseDate;
+        if (releaseDateStr && /^\d{4}-\d{2}-\d{2}$/.test(releaseDateStr)) {
+            const year = Number(releaseDateStr.slice(0, 4));
+            if (!Number.isNaN(year)) {
+                // Older year => higher score
+                score += 2100 - year;
+            }
+        }
+
+        // Small bump for non-single albums that look like normal releases
+        if (albumAttrs.isComplete && albumAttrs.trackCount && albumAttrs.trackCount > 1) {
+            score += 10;
+        }
+
+        return score;
+    }
 
     async matchTracksByIsrc(isrcs: string[]): Promise<Map<string, TrackMatchResult>> {
         const developerToken = await this.getDeveloperToken();
@@ -195,57 +257,91 @@ export class AppleMusicTransferProvider implements TransferProvider {
             const trimmed = isrc.trim();
             if (!trimmed) continue;
 
-            // 1. Fetch Apple tracks by ISRC
-            const url = `${APPLE_API_BASE}/v1/catalog/${storefront}/songs?filter[isrc]=${encodeURIComponent(trimmed)}&include=artists,albums`;
+            // 1. Fetch all songs for this ISRC
+            const url =
+                `${APPLE_API_BASE}/v1/catalog/${storefront}/songs` +
+                `?filter[isrc]=${encodeURIComponent(trimmed)}` +
+                `&include=artists,albums&limit=25`;
+
             const res = await doAppleFetch(url, {
                 headers: { Authorization: `Bearer ${developerToken}` },
             });
-            const candidates = res?.data ?? [];
+
+            const candidates: any[] = res?.data ?? [];
             if (!candidates.length) continue;
 
-            // 2. Fetch related albums to ensure we only get the artist’s album
+            // Defensive: ensure attributes.isrc really matches (in case filter is loose)
+            const strictIsrcMatches = candidates.filter(
+                (s: any) =>
+                    (s.attributes?.isrc ?? "").toUpperCase() === trimmed.toUpperCase()
+            );
+            const effectiveCandidates = strictIsrcMatches.length
+                ? strictIsrcMatches
+                : candidates;
+
+            if (!effectiveCandidates.length) continue;
+
+            // 2. Preload album metadata for all referenced albums
             const albumIds = Array.from(
                 new Set(
-                    candidates.flatMap((s: any) => s.relationships?.albums?.data?.map((a: any) => a.id) ?? [])
+                    effectiveCandidates.flatMap(
+                        (s: any) =>
+                            s.relationships?.albums?.data?.map((a: any) => a.id) ?? []
+                    )
                 )
             );
 
             const albumsById = new Map<string, any>();
             for (let i = 0; i < albumIds.length; i += 25) {
                 const chunk = albumIds.slice(i, i + 25);
-                const albumUrl = `${APPLE_API_BASE}/v1/catalog/${storefront}/albums?ids=${chunk.map(encodeURIComponent as any).join(',')}`;
+                if (!chunk.length) continue;
+
+                const albumUrl =
+                    `${APPLE_API_BASE}/v1/catalog/${storefront}/albums` +
+                    `?ids=${chunk.map(id => encodeURIComponent(id)).join(",")}`;
+
                 const albumRes = await doAppleFetch(albumUrl, {
                     headers: { Authorization: `Bearer ${developerToken}` },
                 });
+
                 for (const album of albumRes?.data ?? []) {
-                    albumsById.set(album.id, album);
+                    if (album?.id) {
+                        albumsById.set(album.id, album);
+                    }
                 }
             }
 
-            // 3. Filter: prefer songs whose album artist matches the track artist and not compilations
-            const filtered = candidates.filter((s: any) => {
-                const albumId = s.relationships?.albums?.data?.[0]?.id;
-                const album = albumsById.get(albumId);
-                const trackArtist = s.attributes?.artistName?.toLowerCase();
-                const albumArtist = album?.attributes?.artistName?.toLowerCase();
-                const isCompilation = album?.attributes?.isCompilation ?? false;
-                return !isCompilation && albumArtist && albumArtist.includes(trackArtist);
-            });
+            // 3. Score all candidates and pick the best non-compilation artist album
+            let best: any | null = null;
+            let bestScore = -Infinity;
 
-            // 4. Choose best match (fallback to first if none filtered)
-            const best = filtered[0] ?? candidates[0];
+            for (const song of effectiveCandidates) {
+                const albumId: string | undefined =
+                    song.relationships?.albums?.data?.[0]?.id;
+                const album = albumId ? albumsById.get(albumId) : undefined;
+                const score = this.scoreIsrcCandidate(song, album);
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = song;
+                }
+            }
+
             if (!best?.id) continue;
 
             matches.set(trimmed, {
                 isrc: trimmed,
                 providerTrackId: best.id,
                 name: best.attributes?.name,
-                artists: best.attributes?.artistName ? [best.attributes.artistName] : [],
+                artists: best.attributes?.artistName
+                    ? [best.attributes.artistName]
+                    : [],
             });
         }
 
         return matches;
     }
+
 
     async matchByMetadata(name: string, artists: string[], duration_ms: Number): Promise<TrackMatchResult | null> {
         const developerToken = await this.getDeveloperToken();
