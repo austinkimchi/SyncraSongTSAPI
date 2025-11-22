@@ -154,14 +154,15 @@ export async function runTransfer(doc: TransferJobDoc): Promise<void> {
                 playlistId?: string | null;
                 name: string;
                 description?: string | null;
+                image?: string | null;
                 public?: boolean
             } =
         {
             playlistId: doc.target.playlistId ?? null,
             name: playlistName,
             description: sourcePlaylist.description ?? null,
+            image: sourcePlaylist.image ?? null,
         };
-
         if (typeof sourcePlaylist.public === 'boolean')
             ensureOptions.public = sourcePlaylist.public || false;
 

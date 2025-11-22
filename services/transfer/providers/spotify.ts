@@ -65,6 +65,7 @@ export class SpotifyTransferProvider implements TransferProvider {
             id: playlist.body.id ?? playlistId,
             name: playlist.body.name ?? 'Untitled Playlist',
             description: playlist.body.description ?? null,
+            image: playlist.body.images?.length ? playlist.body.images[0]?.url ?? null : null,
             tracks,
         };
         if (typeof playlist.body.public === 'boolean') {
@@ -174,7 +175,7 @@ export class SpotifyTransferProvider implements TransferProvider {
         return matches;
     }
 
-    async ensurePlaylist(options: { playlistId?: string | null; name: string; description?: string | null; public?: boolean; }): Promise<PlaylistResolution> {
+    async ensurePlaylist(options: { playlistId?: string | null; name: string; description?: string | null; public?: boolean; image?: string | null }): Promise<PlaylistResolution> {
         if (options.playlistId) {
             const existing = await this.api.getPlaylist(options.playlistId);
             return {
@@ -184,10 +185,19 @@ export class SpotifyTransferProvider implements TransferProvider {
             };
         }
 
+        let base64Image: string | undefined = undefined;
+        if (options.image) {
+            const imageRes = await fetch(options.image || '');
+            const arrayBuffer = await imageRes.arrayBuffer();
+            base64Image = Buffer.from(arrayBuffer).toString('base64');
+        }
+
         const created = await this.api.createPlaylist(options.name, {
             public: options.public ?? false,
             description: options.description ?? undefined,
         });
+        if (base64Image)
+            this.api.uploadCustomPlaylistCoverImage(created.body.id ?? '', base64Image).catch(() => { /* ignore errors */ });
 
         return {
             playlistId: created.body.id ?? '',

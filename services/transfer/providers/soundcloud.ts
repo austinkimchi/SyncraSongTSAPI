@@ -38,6 +38,7 @@ type SoundCloudPlaylist = {
     sharing?: string;
     track_count?: number;
     tracks?: SoundCloudTrack[];
+    artwork_url?: string | null;
     user?: { username?: string };
 };
 
@@ -129,6 +130,7 @@ export class SoundCloudTransferProvider implements TransferProvider {
             name: playlist.title ?? "Untitled Playlist",
             description: playlist.description ?? null,
             public: (playlist.sharing ?? "public") === "public",
+            image: playlist.artwork_url ?? null,
             tracks,
         };
     }
@@ -418,7 +420,7 @@ export class SoundCloudTransferProvider implements TransferProvider {
         return matches;
     }
 
-    async ensurePlaylist(options: { playlistId?: string | null; name: string; description?: string | null; public?: boolean; }): Promise<PlaylistResolution> {
+    async ensurePlaylist(options: { playlistId?: string | null; name: string; description?: string | null; public?: boolean; image?: string | null }): Promise<PlaylistResolution> {
         if (options.playlistId) {
             const playlist: SoundCloudPlaylist = await this.request(`/playlists/${encodeURIComponent(options.playlistId)}`);
             if (!playlist?.id) throw new Error("SoundCloud playlist not found");

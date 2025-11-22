@@ -89,6 +89,11 @@ export class AppleMusicTransferProvider implements TransferProvider {
         const playlistName = playlist?.attributes?.name ?? 'Untitled Playlist';
         const playlistDescription = playlist?.attributes?.description?.standard ?? null;
         const playlistPublic = playlist?.attributes?.isPublic ?? undefined;
+        const playlistImageUrl = playlist?.attributes?.artwork
+            ? playlist.attributes.artwork.url
+                  .replace("{w}", "500")
+                  .replace("{h}", "500")
+            : null;
 
         const tracks: TransferTrack[] = [];
         let trackData = playlist?.relationships?.tracks;
@@ -155,6 +160,7 @@ export class AppleMusicTransferProvider implements TransferProvider {
             name: playlistName,
             description: playlistDescription,
             public: playlistPublic,
+            image: playlistImageUrl,
             tracks,
         };
     }

@@ -30,6 +30,7 @@ export interface SourcePlaylist {
     name: string;
     description?: string | null;
     public?: boolean;
+    image?: string | null;
     tracks: TransferTrack[];
 }
 
