@@ -46,7 +46,7 @@ incoming requests from the UI are validated, normalized into internal transfer j
   - Normalizes platform-specific fields into a common internal model
 - **Cross-Platform Transfer Engine**
   - Creates transfer jobs to move playlists between:
-    - Spotify ↔ Apple Music ↔ SoundCloud :contentReference[oaicite:1]{index=1}
+    - Spotify ↔ Apple Music ↔ SoundCloud
   - Delegates track-level work to specialized matching services
 - **Background Job Processing**
   - Uses a job scheduler/queue (see `agenda/` and `worker.ts`) to:
